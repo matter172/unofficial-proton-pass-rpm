@@ -1,17 +1,26 @@
 #!/bin/bash
+
 set -e
 
-# Ensure the script is run with root privileges
 if [ "$EUID" -ne 0 ]; then
-  echo "❌ Error: Please run this script as root or using sudo." >&2
+  echo "❌ Please run as root or with sudo." >&2
+  exit 1
+fi
+
+if ! command -v dnf &>/dev/null; then
+  echo "❌ This script requires dnf. Only Fedora/RHEL-based distributions are supported." >&2
   exit 1
 fi
 
 REPO_FILE="/etc/yum.repos.d/proton-pass-unofficial.repo"
 
-echo "⚙️ Configuring Proton Pass Unofficial Repository..."
+if [ -f "$REPO_FILE" ]; then
+  echo "✅ Repository already configured at $REPO_FILE"
+  exit 0
+fi
 
-# Write the repository configuration
+echo "⚙️  Configuring Proton Pass Unofficial Repository..."
+
 cat << 'EOF' > "$REPO_FILE"
 [proton-pass-unofficial]
 name=Proton Pass Unofficial (GitHub Pages)
@@ -24,7 +33,6 @@ EOF
 
 chmod 644 "$REPO_FILE"
 
-echo "🔄 Refreshing package manager cache..."
-dnf clean expire-cache && dnf makecache
-
-echo "✅ Success! Install Proton Pass now by running: sudo dnf install proton-pass"
+echo "✅ Repository configured. Run the following to install Proton Pass:"
+echo ""
+echo "   sudo dnf install proton-pass"
