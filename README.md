@@ -16,11 +16,6 @@ Then install Proton Pass:
 sudo dnf install proton-pass
 ```
 
-## What the setup script does
-
-1. Creates `/etc/yum.repos.d/proton-pass-unofficial.repo` pointing at the GitHub Pages repo mirror
-2. Refreshes the DNF cache
-
 ## Updating
 
 Once the repository is configured, updates are delivered through the normal DNF update mechanism:
@@ -29,11 +24,21 @@ Once the repository is configured, updates are delivered through the normal DNF 
 sudo dnf upgrade proton-pass
 ```
 
+## Available versions
+
+All retained versions are listed on the [Releases](https://github.com/matter172/unofficial-proton-pass-rpm/releases) page. By default the 5 most recent versions are kept; older releases are pruned automatically when a new one is published.
+
 ## How it works
 
-A GitHub Actions workflow runs every night at midnight UTC. It checks Proton's official release manifest, and if a new version is available, downloads the RPM, verifies its SHA512 checksum against Proton's published value, regenerates the repository metadata with `createrepo_c`, and deploys everything to GitHub Pages.
+A GitHub Actions workflow runs every night at midnight UTC. It checks Proton's official release manifest, and if a new version is available:
 
-The RPM binaries are never committed to git — they are built fresh each run and served directly via Pages.
+1. Downloads the RPM from Proton's servers
+2. Verifies the SHA512 checksum against Proton's published manifest
+3. Creates a GitHub Release and attaches the RPM as a release asset
+4. Prunes releases beyond the configured retention limit
+5. Downloads all retained release assets, regenerates repository metadata with `createrepo_c`, and deploys everything to GitHub Pages
+
+RPM binaries are never committed to git — they are stored as GitHub Release assets and served via Pages.
 
 ## Supported distributions
 
