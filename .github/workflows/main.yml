@@ -1,0 +1,113 @@
+name: Update Proton Pass RPM Repository
+
+on:
+  schedule:
+    - cron: '0 0 * * *'   # every day at 00:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  update-repo:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq createrepo-c
+
+      - name: Fetch manifest and download new RPM if needed
+        id: check_version
+        run: |
+          MANIFEST_URL="https://proton.me/download/PassDesktop/linux/x64/version.json"
+          VERSION_DATA=$(curl -sL "$MANIFEST_URL")
+
+          VERSION=$(echo "$VERSION_DATA" | jq -r '.Releases[0].Version')
+          DOWNLOAD_URL=$(echo "$VERSION_DATA" | jq -r '.Releases[0].File[] | select(.Url | endswith(".rpm")) | .Url')
+          EXPECTED_SHA512=$(echo "$VERSION_DATA" | jq -r '.Releases[0].File[] | select(.Url | endswith(".rpm")) | .Sha512CheckSum')
+
+          if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
+            echo "::error::Could not find a .rpm entry in Proton's manifest - the API may have changed."
+            exit 1
+          fi
+
+          FILENAME=$(basename "$DOWNLOAD_URL")
+          mkdir -p x86_64
+
+          if [ -f "x86_64/$FILENAME" ]; then
+            echo "Already have $VERSION ($FILENAME), nothing to do."
+            echo "new_release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "New version $VERSION detected, downloading $FILENAME..."
+            curl -sL "$DOWNLOAD_URL" -o "x86_64/$FILENAME"
+
+            ACTUAL_SHA512=$(sha512sum "x86_64/$FILENAME" | awk '{print $1}')
+            if [ "$ACTUAL_SHA512" != "$EXPECTED_SHA512" ]; then
+              echo "::error::Checksum mismatch for $FILENAME"
+              echo "expected: $EXPECTED_SHA512"
+              echo "got:      $ACTUAL_SHA512"
+              rm -f "x86_64/$FILENAME"
+              exit 1
+            fi
+
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            echo "filename=$FILENAME" >> "$GITHUB_OUTPUT"
+            echo "new_release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Drop older RPMs (keep latest only)
+        if: steps.check_version.outputs.new_release == 'true'
+        run: |
+          cd x86_64
+          # change "head -n -1" to e.g. "head -n -2" if you want to keep 1 old version around too
+          ls -1 *.rpm | sort -V | head -n -1 | xargs -r rm -v --
+
+      - name: Regenerate repository metadata
+        if: steps.check_version.outputs.new_release == 'true'
+        run: createrepo_c x86_64/
+
+      - name: Commit and push changes
+        if: steps.check_version.outputs.new_release == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add x86_64/
+          git commit -m "Update Proton Pass to ${{ steps.check_version.outputs.version }}"
+          git push
+
+      - name: Setup Pages
+        if: steps.check_version.outputs.new_release == 'true' || github.event_name == 'workflow_dispatch'
+        uses: actions/configure-pages@v5
+
+      - name: Build clean Pages directory
+        if: steps.check_version.outputs.new_release == 'true' || github.event_name == 'workflow_dispatch'
+        run: |
+          mkdir -p _site
+          cp -r x86_64 _site/
+          cp setup.sh _site/ 2>/dev/null || true
+
+      - name: Upload Pages artifact
+        if: steps.check_version.outputs.new_release == 'true' || github.event_name == 'workflow_dispatch'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '_site'
+
+      - name: Deploy to GitHub Pages
+        if: steps.check_version.outputs.new_release == 'true' || github.event_name == 'workflow_dispatch'
+        id: deployment
+        uses: actions/deploy-pages@v4
