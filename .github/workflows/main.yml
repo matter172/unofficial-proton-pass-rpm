@@ -31,7 +31,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y jq createrepo-c
 
-      - name: Fetch manifest and download new RPM if needed
+      - name: Fetch manifest and decide whether to publish
         id: check_version
         run: |
           MANIFEST_URL="https://proton.me/download/PassDesktop/linux/x64/version.json"
@@ -46,68 +46,76 @@ jobs:
             exit 1
           fi
 
-          FILENAME=$(basename "$DOWNLOAD_URL")
-          mkdir -p x86_64
-
-          if [ -f "x86_64/$FILENAME" ]; then
-            echo "Already have $VERSION ($FILENAME), nothing to do."
-            echo "new_release=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "New version $VERSION detected, downloading $FILENAME..."
-            curl -sL "$DOWNLOAD_URL" -o "x86_64/$FILENAME"
-
-            ACTUAL_SHA512=$(sha512sum "x86_64/$FILENAME" | awk '{print $1}')
-            if [ "$ACTUAL_SHA512" != "$EXPECTED_SHA512" ]; then
-              echo "::error::Checksum mismatch for $FILENAME"
-              echo "expected: $EXPECTED_SHA512"
-              echo "got:      $ACTUAL_SHA512"
-              rm -f "x86_64/$FILENAME"
-              exit 1
-            fi
-
-            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-            echo "filename=$FILENAME" >> "$GITHUB_OUTPUT"
-            echo "new_release=true" >> "$GITHUB_OUTPUT"
+          LAST_VERSION=""
+          if [ -f last_version.txt ]; then
+            LAST_VERSION=$(cat last_version.txt)
           fi
 
-      - name: Drop older RPMs (keep latest only)
-        if: steps.check_version.outputs.new_release == 'true'
-        run: |
-          cd x86_64
-          # change "head -n -1" to e.g. "head -n -2" if you want to keep 1 old version around too
-          ls -1 *.rpm | sort -V | head -n -1 | xargs -r rm -v --
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+          # Only skip work on an unchanged version during a scheduled run.
+          # A manual workflow_dispatch always rebuilds/republishes, even if
+          # nothing changed upstream - handy for fixing a broken Pages deploy.
+          if [ "$VERSION" = "$LAST_VERSION" ] && [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+            echo "Already up to date at $VERSION, nothing to do."
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+            echo "version_changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "should_publish=true" >> "$GITHUB_OUTPUT"
+          if [ "$VERSION" != "$LAST_VERSION" ]; then
+            echo "version_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "version_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          mkdir -p x86_64
+          FILENAME=$(basename "$DOWNLOAD_URL")
+          echo "Downloading $FILENAME ($VERSION)..."
+          curl -sL "$DOWNLOAD_URL" -o "x86_64/$FILENAME"
+
+          ACTUAL_SHA512=$(sha512sum "x86_64/$FILENAME" | awk '{print $1}')
+          if [ "$ACTUAL_SHA512" != "$EXPECTED_SHA512" ]; then
+            echo "::error::Checksum mismatch for $FILENAME"
+            echo "expected: $EXPECTED_SHA512"
+            echo "got:      $ACTUAL_SHA512"
+            rm -f "x86_64/$FILENAME"
+            exit 1
+          fi
 
       - name: Regenerate repository metadata
-        if: steps.check_version.outputs.new_release == 'true'
+        if: steps.check_version.outputs.should_publish == 'true'
         run: createrepo_c x86_64/
 
-      - name: Commit and push changes
-        if: steps.check_version.outputs.new_release == 'true'
+      - name: Record published version
+        if: steps.check_version.outputs.version_changed == 'true'
         run: |
+          echo "${{ steps.check_version.outputs.version }}" > last_version.txt
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add x86_64/
-          git commit -m "Update Proton Pass to ${{ steps.check_version.outputs.version }}"
+          git add last_version.txt
+          git commit -m "Track Proton Pass ${{ steps.check_version.outputs.version }}"
           git push
 
       - name: Setup Pages
-        if: steps.check_version.outputs.new_release == 'true' || github.event_name == 'workflow_dispatch'
+        if: steps.check_version.outputs.should_publish == 'true'
         uses: actions/configure-pages@v5
 
       - name: Build clean Pages directory
-        if: steps.check_version.outputs.new_release == 'true' || github.event_name == 'workflow_dispatch'
+        if: steps.check_version.outputs.should_publish == 'true'
         run: |
           mkdir -p _site
           cp -r x86_64 _site/
           cp setup.sh _site/ 2>/dev/null || true
 
       - name: Upload Pages artifact
-        if: steps.check_version.outputs.new_release == 'true' || github.event_name == 'workflow_dispatch'
+        if: steps.check_version.outputs.should_publish == 'true'
         uses: actions/upload-pages-artifact@v3
         with:
           path: '_site'
 
       - name: Deploy to GitHub Pages
-        if: steps.check_version.outputs.new_release == 'true' || github.event_name == 'workflow_dispatch'
+        if: steps.check_version.outputs.should_publish == 'true'
         id: deployment
         uses: actions/deploy-pages@v4
