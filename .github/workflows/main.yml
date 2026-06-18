@@ -5,6 +5,9 @@ on:
     - cron: '0 0 * * *'   # every day at 00:00 UTC
   workflow_dispatch:
 
+env:
+  VERSIONS_TO_KEEP: 5   # number of releases to retain; older ones are pruned automatically
+
 permissions:
   contents: write
   pages: write
@@ -31,8 +34,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y jq createrepo-c
 
-      - name: Fetch manifest and decide whether to publish
+      - name: Fetch manifest and check for new version
         id: check_version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           MANIFEST_URL="https://proton.me/download/PassDesktop/linux/x64/version.json"
           VERSION_DATA=$(curl -sL "$MANIFEST_URL")
@@ -46,57 +51,86 @@ jobs:
             exit 1
           fi
 
-          LAST_VERSION=""
-          if [ -f last_version.txt ]; then
-            LAST_VERSION=$(cat last_version.txt)
-          fi
-
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "download_url=$DOWNLOAD_URL" >> "$GITHUB_OUTPUT"
+          echo "expected_sha512=$EXPECTED_SHA512" >> "$GITHUB_OUTPUT"
 
-          # Only skip work on an unchanged version during a scheduled run.
-          # A manual workflow_dispatch always rebuilds/republishes, even if
-          # nothing changed upstream - handy for fixing a broken Pages deploy.
-          if [ "$VERSION" = "$LAST_VERSION" ] && [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
-            echo "Already up to date at $VERSION, nothing to do."
+          # Check if a GitHub Release already exists for this version
+          EXISTING=$(gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" 2>/dev/null && echo "true" || echo "false")
+          echo "release_exists=$EXISTING" >> "$GITHUB_OUTPUT"
+
+          if [ "$EXISTING" = "true" ] && [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+            echo "Release v$VERSION already exists, nothing to do."
             echo "should_publish=false" >> "$GITHUB_OUTPUT"
-            echo "version_changed=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          echo "should_publish=true" >> "$GITHUB_OUTPUT"
-          if [ "$VERSION" != "$LAST_VERSION" ]; then
-            echo "version_changed=true" >> "$GITHUB_OUTPUT"
           else
-            echo "version_changed=false" >> "$GITHUB_OUTPUT"
+            echo "should_publish=true" >> "$GITHUB_OUTPUT"
           fi
 
-          mkdir -p x86_64
+      - name: Download new RPM and create GitHub Release
+        if: steps.check_version.outputs.should_publish == 'true' && steps.check_version.outputs.release_exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.check_version.outputs.version }}"
+          DOWNLOAD_URL="${{ steps.check_version.outputs.download_url }}"
+          EXPECTED_SHA512="${{ steps.check_version.outputs.expected_sha512 }}"
           FILENAME=$(basename "$DOWNLOAD_URL")
-          echo "Downloading $FILENAME ($VERSION)..."
-          curl -sL "$DOWNLOAD_URL" -o "x86_64/$FILENAME"
 
-          ACTUAL_SHA512=$(sha512sum "x86_64/$FILENAME" | awk '{print $1}')
+          echo "Downloading $FILENAME..."
+          curl -sL "$DOWNLOAD_URL" -o "$FILENAME"
+
+          ACTUAL_SHA512=$(sha512sum "$FILENAME" | awk '{print $1}')
           if [ "$ACTUAL_SHA512" != "$EXPECTED_SHA512" ]; then
             echo "::error::Checksum mismatch for $FILENAME"
             echo "expected: $EXPECTED_SHA512"
             echo "got:      $ACTUAL_SHA512"
-            rm -f "x86_64/$FILENAME"
+            rm -f "$FILENAME"
             exit 1
           fi
+
+          echo "Checksum OK. Creating GitHub Release v$VERSION..."
+          gh release create "v$VERSION" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Proton Pass $VERSION" \
+            --notes "Automated release. Source: $DOWNLOAD_URL" \
+            "$FILENAME"
+
+      - name: Prune old releases
+        if: steps.check_version.outputs.release_exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName,createdAt \
+            | jq -r 'sort_by(.createdAt) | reverse | .[${{ env.VERSIONS_TO_KEEP }}:] | .[].tagName' \
+            | while read TAG; do
+                echo "Pruning old release $TAG..."
+                gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag
+              done
+
+      - name: Download all release assets and build repo
+        if: steps.check_version.outputs.should_publish == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p x86_64
+
+          echo "Fetching all release tags..."
+          gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName \
+            | jq -r '.[].tagName' | while read TAG; do
+              echo "Downloading assets for $TAG..."
+              gh release download "$TAG" \
+                --repo "$GITHUB_REPOSITORY" \
+                --pattern "*.rpm" \
+                --dir x86_64 \
+                --clobber
+            done
+
+          echo "RPMs collected:"
+          ls -lh x86_64/
 
       - name: Regenerate repository metadata
         if: steps.check_version.outputs.should_publish == 'true'
         run: createrepo_c x86_64/
-
-      - name: Record published version
-        if: steps.check_version.outputs.version_changed == 'true'
-        run: |
-          echo "${{ steps.check_version.outputs.version }}" > last_version.txt
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add last_version.txt
-          git commit -m "Track Proton Pass ${{ steps.check_version.outputs.version }}"
-          git push
 
       - name: Setup Pages
         if: steps.check_version.outputs.should_publish == 'true'
