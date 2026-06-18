@@ -1,0 +1,76 @@
+name: Update Proton Pass RPM Repository
+
+on:
+  schedule:
+    # Runs every day at midnight UTC
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+    # Allows you to manually trigger the workflow anytime from the GitHub UI
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  update-repo:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq createrepo-c
+
+      - name: Fetch and Check Proton Manifest
+        id: check_version  # <--- Crucial: This ID is used to reference the output later
+        run: |
+          MANIFEST_URL="https://proton.me/download/PassDesktop/linux/x64/version.json"
+          VERSION_DATA=$(curl -s "$MANIFEST_URL")
+          VERSION=$(echo "$VERSION_DATA" | jq -r '.version')
+          DOWNLOAD_URL=$(echo "$VERSION_DATA" | jq -r '.downloadUrl')
+          FILENAME=$(basename "$DOWNLOAD_URL")
+          
+          mkdir -p x86_64
+          
+          if [ -f "x86_64/$FILENAME" ]; then
+            echo "Repository is already up to date."
+            echo "new_release=false" >> $GITHUB_OUTPUT  # <--- Changed this
+          else
+            echo "New version detected. Downloading $FILENAME..."
+            curl -L "$DOWNLOAD_URL" -o "x86_64/$FILENAME"
+            echo "new_release=true" >> $GITHUB_OUTPUT   # <--- Changed this
+          fi
+
+      - name: Regenerate Repository Metadata
+        # Reads the output 'new_release' from the step with ID 'check_version'
+        if: steps.check_version.outputs.new_release == 'true'
+        run: |
+          createrepo_c x86_64/
+
+      - name: Commit and Push Changes
+        if: steps.check_version.outputs.new_release == 'true'
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add x86_64/
+          git commit -m "Automated update: Added new Proton Pass RPM"
+          git push
+
+      - name: Upload Artifact for GitHub Pages
+        if: steps.check_version.outputs.new_release == 'true' || github.event_name == 'workflow_dispatch'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+      - name: Deploy to GitHub Pages
+        if: steps.check_version.outputs.new_release == 'true' || github.event_name == 'workflow_dispatch'
+        uses: actions/deploy-pages@v4
