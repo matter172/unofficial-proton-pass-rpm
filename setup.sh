@@ -15,7 +15,7 @@ echo "⚙️ Configuring Proton Pass Unofficial Repository..."
 cat << 'EOF' > "$REPO_FILE"
 [proton-pass-unofficial]
 name=Proton Pass Unofficial (GitHub Pages)
-baseurl=https://YOUR_GITHUB_USERNAME.github.io/YOUR_REPO_NAME/x86_64/
+baseurl=https://matter172.github.io/unofficial-proton-pass-rpm/x86_64/
 enabled=1
 gpgcheck=0
 repo_gpgcheck=0
