@@ -56,7 +56,11 @@ jobs:
           echo "expected_sha512=$EXPECTED_SHA512" >> "$GITHUB_OUTPUT"
 
           # Check if a GitHub Release already exists for this version
-          EXISTING=$(gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" 2>/dev/null && echo "true" || echo "false")
+          if gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" &>/dev/null; then
+            EXISTING="true"
+          else
+            EXISTING="false"
+          fi
           echo "release_exists=$EXISTING" >> "$GITHUB_OUTPUT"
 
           if [ "$EXISTING" = "true" ] && [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
