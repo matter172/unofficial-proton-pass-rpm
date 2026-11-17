@@ -12,14 +12,20 @@ if ! command -v dnf &>/dev/null; then
   exit 1
 fi
 
-REPO_FILE="/etc/yum.repos.d/proton-pass-unofficial.repo"
-
-if [ -f "$REPO_FILE" ]; then
-  echo "✅ Repository already configured at $REPO_FILE"
-  exit 0
+ARCH=$(uname -m)
+if [ "$ARCH" != "x86_64" ]; then
+  echo "❌ Proton Pass is only published for x86_64; this machine is $ARCH." >&2
+  exit 1
 fi
 
-echo "⚙️  Configuring Proton Pass Unofficial Repository..."
+REPO_FILE="/etc/yum.repos.d/proton-pass-unofficial.repo"
+
+# Always (re)write the repo file so re-running this script applies any config changes
+if [ -f "$REPO_FILE" ]; then
+  echo "⚙️  Updating existing repository config at $REPO_FILE..."
+else
+  echo "⚙️  Configuring Proton Pass Unofficial Repository..."
+fi
 
 cat << 'EOF' > "$REPO_FILE"
 [proton-pass-unofficial]
