@@ -40,7 +40,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           MANIFEST_URL="https://proton.me/download/PassDesktop/linux/x64/version.json"
-          VERSION_DATA=$(curl -sL "$MANIFEST_URL")
+          if ! VERSION_DATA=$(curl -fsSL --retry 3 "$MANIFEST_URL"); then
+            echo "::error::Failed to fetch Proton's manifest from $MANIFEST_URL"
+            exit 1
+          fi
 
           VERSION=$(echo "$VERSION_DATA" | jq -r '.Releases[0].Version')
           DOWNLOAD_URL=$(echo "$VERSION_DATA" | jq -r '.Releases[0].File[] | select(.Url | endswith(".rpm")) | .Url')
@@ -81,7 +84,11 @@ jobs:
           FILENAME=$(basename "$DOWNLOAD_URL")
 
           echo "Downloading $FILENAME..."
-          curl -sL "$DOWNLOAD_URL" -o "$FILENAME"
+          if ! curl -fsSL --retry 3 "$DOWNLOAD_URL" -o "$FILENAME"; then
+            echo "::error::Failed to download $DOWNLOAD_URL"
+            rm -f "$FILENAME"
+            exit 1
+          fi
 
           ACTUAL_SHA512=$(sha512sum "$FILENAME" | awk '{print $1}')
           if [ "$ACTUAL_SHA512" != "$EXPECTED_SHA512" ]; then
