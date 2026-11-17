@@ -104,8 +104,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName,createdAt \
-            | jq -r 'sort_by(.createdAt) | reverse | .[${{ env.VERSIONS_TO_KEEP }}:] | .[].tagName' \
+          # Sort by version number, not createdAt: GitHub sets a release's createdAt to the
+          # date of the tagged commit, so releases tagged on the same commit tie and the
+          # newest one could be pruned. Only vX.Y.Z tags are considered, so manual releases are left alone.
+          gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName \
+            | jq -r --argjson keep "$VERSIONS_TO_KEEP" '
+                map(select(.tagName | test("^v[0-9]+(\\.[0-9]+)*$")))
+                | sort_by(.tagName | ltrimstr("v") | split(".") | map(tonumber))
+                | reverse | .[$keep:] | .[].tagName' \
             | while read TAG; do
                 echo "Pruning old release $TAG..."
                 gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag
