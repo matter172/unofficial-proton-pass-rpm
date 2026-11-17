@@ -67,9 +67,17 @@ jobs:
           echo "download_url=$DOWNLOAD_URL" >> "$GITHUB_OUTPUT"
           echo "expected_sha512=$EXPECTED_SHA512" >> "$GITHUB_OUTPUT"
 
-          # Check if a GitHub Release already exists for this version
-          if gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" &>/dev/null; then
-            EXISTING="true"
+          # A release only counts as existing if it has an RPM attached. If an earlier run
+          # created the release but the upload failed, the RPM is uploaded to it again.
+          if RPM_COUNT=$(gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" --json assets \
+                --jq '[.assets[].name | select(endswith(".rpm"))] | length' 2>/dev/null); then
+            if [ "$RPM_COUNT" -gt 0 ]; then
+              EXISTING="true"
+            else
+              echo "::warning::Release v$VERSION exists but has no RPM attached; uploading it again."
+              EXISTING="false"
+              echo "release_incomplete=true" >> "$GITHUB_OUTPUT"
+            fi
           else
             EXISTING="false"
           fi
@@ -90,6 +98,7 @@ jobs:
           VERSION: ${{ steps.check_version.outputs.version }}
           DOWNLOAD_URL: ${{ steps.check_version.outputs.download_url }}
           EXPECTED_SHA512: ${{ steps.check_version.outputs.expected_sha512 }}
+          RELEASE_INCOMPLETE: ${{ steps.check_version.outputs.release_incomplete }}
         run: |
           FILENAME=$(basename "$DOWNLOAD_URL")
 
@@ -109,12 +118,17 @@ jobs:
             exit 1
           fi
 
-          echo "Checksum OK. Creating GitHub Release v$VERSION..."
-          gh release create "v$VERSION" \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "Proton Pass $VERSION" \
-            --notes "Automated release. Source: $DOWNLOAD_URL" \
-            "$FILENAME"
+          if [ "$RELEASE_INCOMPLETE" = "true" ]; then
+            echo "Checksum OK. Uploading $FILENAME to existing release v$VERSION..."
+            gh release upload "v$VERSION" "$FILENAME" --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            echo "Checksum OK. Creating GitHub Release v$VERSION..."
+            gh release create "v$VERSION" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Proton Pass $VERSION" \
+              --notes "Automated release. Source: $DOWNLOAD_URL" \
+              "$FILENAME"
+          fi
 
       - name: Prune old releases
         if: steps.check_version.outputs.release_exists == 'false'
