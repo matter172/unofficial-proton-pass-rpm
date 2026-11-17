@@ -45,12 +45,14 @@ jobs:
             exit 1
           fi
 
-          VERSION=$(echo "$VERSION_DATA" | jq -r '.Releases[0].Version')
-          DOWNLOAD_URL=$(echo "$VERSION_DATA" | jq -r '.Releases[0].File[] | select(.Url | endswith(".rpm")) | .Url')
-          EXPECTED_SHA512=$(echo "$VERSION_DATA" | jq -r '.Releases[0].File[] | select(.Url | endswith(".rpm")) | .Sha512CheckSum')
+          VERSION=$(echo "$VERSION_DATA" | jq -r '.Releases[0].Version // empty')
+          # Pick the first .rpm entry so URL and checksum always come from the same file
+          RPM_ENTRY=$(echo "$VERSION_DATA" | jq -c 'first(.Releases[0].File[]? | select(.Url // "" | endswith(".rpm"))) // empty')
+          DOWNLOAD_URL=$(echo "$RPM_ENTRY" | jq -r '.Url // empty')
+          EXPECTED_SHA512=$(echo "$RPM_ENTRY" | jq -r '.Sha512CheckSum // empty')
 
-          if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
-            echo "::error::Could not find a .rpm entry in Proton's manifest - the API may have changed."
+          if [ -z "$VERSION" ] || [ -z "$DOWNLOAD_URL" ] || [ -z "$EXPECTED_SHA512" ]; then
+            echo "::error::Could not find version, .rpm URL or SHA512 in Proton's manifest - the API may have changed."
             exit 1
           fi
 
