@@ -10,7 +10,7 @@ An unofficial DNF/YUM repository for [Proton Pass](https://proton.me/pass) on Fe
 curl -fsSL https://raw.githubusercontent.com/matter172/unofficial-proton-pass-rpm/refs/heads/main/setup.sh | sudo bash
 ```
 
-The script is safe to re-run; it rewrites the repo config with the latest settings.
+The script is safe to re-run; it rewrites the repo config with the latest settings. Only x86_64 is supported.
 
 Then install Proton Pass:
 
