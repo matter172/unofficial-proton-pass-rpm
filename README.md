@@ -18,12 +18,28 @@ Then install Proton Pass:
 sudo dnf install proton-pass
 ```
 
+### Fedora Silverblue / Atomic desktops
+
+The same setup script works on Silverblue, Kinoite and the other rpm-ostree based Atomic desktops. Install Proton Pass by layering it instead of using `dnf`:
+
+```bash
+sudo rpm-ostree install proton-pass
+```
+
+Reboot to start using it, or add `--apply-live` to use it without rebooting.
+
 ## Updating
 
 Once the repository is configured, updates are delivered through the normal DNF update mechanism:
 
 ```bash
 sudo dnf upgrade proton-pass
+```
+
+On Silverblue / Atomic desktops, layered packages are updated along with the rest of the system:
+
+```bash
+sudo rpm-ostree upgrade
 ```
 
 ## Available versions
@@ -44,9 +60,10 @@ RPM binaries are never committed to git — they are stored as GitHub Release as
 
 ## Supported distributions
 
-Any RPM-based distribution with `dnf`:
+Any RPM-based distribution with `dnf` or `rpm-ostree`:
 
 - Fedora (latest stable + 1 previous release)
+- Fedora Silverblue, Kinoite and other Atomic desktops
 - RHEL / CentOS Stream / AlmaLinux / Rocky Linux 9+
 
 Other RPM-based distros may work but are untested.
@@ -56,6 +73,13 @@ Other RPM-based distros may work but are untested.
 ```bash
 sudo rm /etc/yum.repos.d/proton-pass-unofficial.repo
 sudo dnf clean all
+```
+
+On Silverblue / Atomic desktops, remove the layered package first, then delete the repo file:
+
+```bash
+sudo rpm-ostree uninstall proton-pass
+sudo rm /etc/yum.repos.d/proton-pass-unofficial.repo
 ```
 
 ## Security
