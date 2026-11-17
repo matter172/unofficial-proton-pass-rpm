@@ -7,8 +7,14 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
-if ! command -v dnf &>/dev/null; then
-  echo "❌ This script requires dnf. Only Fedora/RHEL-based distributions are supported." >&2
+# Image-based systems (Fedora Silverblue, Kinoite and other Atomic desktops)
+# can't install packages with dnf; they layer them with rpm-ostree instead.
+if [ -e /run/ostree-booted ] && command -v rpm-ostree &>/dev/null; then
+  PKG_MANAGER="rpm-ostree"
+elif command -v dnf &>/dev/null; then
+  PKG_MANAGER="dnf"
+else
+  echo "❌ This script requires dnf or rpm-ostree. Only Fedora/RHEL-based distributions are supported." >&2
   exit 1
 fi
 
@@ -41,4 +47,10 @@ chmod 644 "$REPO_FILE"
 
 echo "✅ Repository configured. Run the following to install Proton Pass:"
 echo ""
-echo "   sudo dnf install proton-pass"
+if [ "$PKG_MANAGER" = "rpm-ostree" ]; then
+  echo "   sudo rpm-ostree install proton-pass"
+  echo ""
+  echo "Then reboot to start using it (or add --apply-live to use it right away)."
+else
+  echo "   sudo dnf install proton-pass"
+fi
