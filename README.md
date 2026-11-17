@@ -30,7 +30,7 @@ All retained versions are listed on the [Releases](https://github.com/matter172/
 
 ## How it works
 
-A GitHub Actions workflow runs every night at midnight UTC. It checks Proton's official release manifest, and if a new version is available:
+A GitHub Actions workflow runs every night at midnight UTC. It checks Proton's official release manifest, and if a new **stable** version is available (beta builds in the manifest are ignored):
 
 1. Downloads the RPM from Proton's servers
 2. Verifies the SHA512 checksum against Proton's published manifest
