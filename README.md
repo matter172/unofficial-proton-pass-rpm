@@ -4,13 +4,22 @@ An unofficial DNF/YUM repository for [Proton Pass](https://proton.me/pass) on Fe
 
 > **Note:** This is an unofficial, community-maintained repository. It is not affiliated with or endorsed by Proton AG.
 
-## Quick Setup
+## Setup
+
+Only x86_64 is supported. Add the repository by downloading its [`.repo` file](proton-pass-unofficial.repo) into `/etc/yum.repos.d/`. Pick the command that matches your system:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/matter172/unofficial-proton-pass-rpm/refs/heads/main/setup.sh | sudo bash
+# Fedora 41+ (dnf5)
+sudo dnf config-manager addrepo --from-repofile=https://raw.githubusercontent.com/matter172/unofficial-proton-pass-rpm/refs/heads/main/proton-pass-unofficial.repo
+
+# RHEL / CentOS Stream / AlmaLinux / Rocky (dnf4, needs dnf-plugins-core)
+sudo dnf config-manager --add-repo https://raw.githubusercontent.com/matter172/unofficial-proton-pass-rpm/refs/heads/main/proton-pass-unofficial.repo
+
+# Any distribution, including Silverblue / Atomic desktops
+sudo curl -fsSL -o /etc/yum.repos.d/proton-pass-unofficial.repo https://raw.githubusercontent.com/matter172/unofficial-proton-pass-rpm/refs/heads/main/proton-pass-unofficial.repo
 ```
 
-The script is safe to re-run; it rewrites the repo config with the latest settings. Only x86_64 is supported.
+The file is seven lines long, so read it first if you like. It points DNF at this repository's GitHub Pages site.
 
 Then install Proton Pass:
 
@@ -18,9 +27,21 @@ Then install Proton Pass:
 sudo dnf install proton-pass
 ```
 
+### Optional: setup script
+
+[`setup.sh`](setup.sh) writes the same `.repo` file and prints the right install command for your system (`dnf` or `rpm-ostree`). It runs as root, so **read it before running it**:
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/matter172/unofficial-proton-pass-rpm/refs/heads/main/setup.sh
+less setup.sh
+sudo bash setup.sh
+```
+
+The script is safe to re-run; it rewrites the repo config with the latest settings.
+
 ### Fedora Silverblue / Atomic desktops
 
-The same setup script works on Silverblue, Kinoite and the other rpm-ostree based Atomic desktops. Install Proton Pass by layering it instead of using `dnf`:
+On Silverblue, Kinoite and the other rpm-ostree based Atomic desktops, add the repository with the `curl` command above (or the setup script), then install Proton Pass by layering it instead of using `dnf`:
 
 ```bash
 sudo rpm-ostree install proton-pass
