@@ -1,0 +1,7 @@
+[proton-pass-unofficial]
+name=Proton Pass Unofficial (GitHub Pages)
+baseurl=https://matter172.github.io/unofficial-proton-pass-rpm/x86_64/
+enabled=1
+gpgcheck=0
+repo_gpgcheck=0
+metadata_expire=1h

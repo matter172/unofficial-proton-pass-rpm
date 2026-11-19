@@ -1,4 +1,8 @@
 #!/bin/bash
+#
+# Optional helper that adds the unofficial Proton Pass repository.
+# It only writes /etc/yum.repos.d/proton-pass-unofficial.repo (same contents as
+# proton-pass-unofficial.repo in this repository). Read it before running it as root.
 
 set -e
 
@@ -26,6 +30,7 @@ fi
 
 REPO_FILE="/etc/yum.repos.d/proton-pass-unofficial.repo"
 
+# Keep this in sync with proton-pass-unofficial.repo.
 # Always (re)write the repo file so re-running this script applies any config changes
 if [ -f "$REPO_FILE" ]; then
   echo "⚙️  Updating existing repository config at $REPO_FILE..."
