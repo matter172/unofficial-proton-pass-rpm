@@ -109,8 +109,37 @@ sudo rm /etc/yum.repos.d/proton-pass-unofficial.repo
 - The SHA512 checksum is verified against Proton's published manifest before the file is published
 - GPG check is disabled (`gpgcheck=0`) because Proton does not publish a GPG-signed repo — the checksum verification in the workflow serves as the integrity check
 
-If you prefer to verify manually, Proton's manifest (including checksums) is available at:
+## Verify a package yourself
+
+Every RPM here should be byte-for-byte identical to Proton's official build. To check one, compare its SHA512 with the checksum in Proton's release manifest, which is the same manifest the workflow uses:
+
 `https://proton.me/download/PassDesktop/linux/x64/version.json`
+
+Example for version 1.43.1 (requires `jq`):
+
+```bash
+VERSION=1.43.1
+
+# Download the RPM from this repository (or run: dnf download proton-pass)
+curl -fsSLO "https://github.com/matter172/unofficial-proton-pass-rpm/releases/download/v$VERSION/proton-pass-$VERSION-1.x86_64.rpm"
+
+# Checksum of the file you downloaded
+sha512sum "proton-pass-$VERSION-1.x86_64.rpm"
+
+# Checksum Proton publishes for that version
+curl -fsSL https://proton.me/download/PassDesktop/linux/x64/version.json \
+  | jq -r --arg v "$VERSION" '.Releases[] | select(.Version == $v) | .File[] | select(.Url | endswith(".rpm")) | .Sha512CheckSum'
+```
+
+The two values must match. To have `sha512sum` do the comparison:
+
+```bash
+echo "$(curl -fsSL https://proton.me/download/PassDesktop/linux/x64/version.json \
+  | jq -r --arg v "$VERSION" '.Releases[] | select(.Version == $v) | .File[] | select(.Url | endswith(".rpm")) | .Sha512CheckSum')  proton-pass-$VERSION-1.x86_64.rpm" \
+  | sha512sum -c -
+```
+
+Each release's notes also list the SHA512 from Proton's manifest. Proton's manifest only lists recent versions, so an older release may no longer appear in it.
 
 ## Licensing and source
 
