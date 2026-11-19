@@ -118,15 +118,58 @@ jobs:
             exit 1
           fi
 
+          # GPL-3.0 corresponding source. Proton tags releases in ProtonMail/WebClients as
+          # proton-pass@<version>; only link the tag if it exists and its pass-desktop
+          # package.json carries the same version, otherwise fall back to the directory.
+          SOURCE_REPO="ProtonMail/WebClients"
+          SOURCE_TAG="proton-pass@$VERSION"
+          SOURCE_DIR_URL="https://github.com/$SOURCE_REPO/tree/main/applications/pass-desktop"
+          if SOURCE_COMMIT=$(gh api "repos/$SOURCE_REPO/commits/$SOURCE_TAG" --jq '.sha' 2>/dev/null) \
+             && TAGGED_VERSION=$(gh api "repos/$SOURCE_REPO/contents/applications/pass-desktop/package.json?ref=$SOURCE_COMMIT" \
+                  --jq '.content' 2>/dev/null | base64 -d | jq -r '.version') \
+             && [ "$TAGGED_VERSION" = "$VERSION" ]; then
+            SOURCE_TEXT="Source for this release: tag [$SOURCE_TAG](https://github.com/$SOURCE_REPO/tree/$SOURCE_TAG/applications/pass-desktop) (commit [${SOURCE_COMMIT:0:12}](https://github.com/$SOURCE_REPO/tree/$SOURCE_COMMIT/applications/pass-desktop)) in $SOURCE_REPO."
+          else
+            echo "::warning::No matching $SOURCE_TAG tag found in $SOURCE_REPO; linking the pass-desktop directory instead."
+            SOURCE_TEXT="Source: [applications/pass-desktop]($SOURCE_DIR_URL) in $SOURCE_REPO. Proton has not published a $SOURCE_TAG tag, so use the revision matching Proton Pass version $VERSION."
+          fi
+
+          # Unquoted heredoc: variables expand once and their values are not re-evaluated.
+          # Literal backticks would be command substitution here, so code blocks use ~~~.
+          NOTES_FILE="$RUNNER_TEMP/release-notes.md"
+          cat > "$NOTES_FILE" << EOF
+          Unmodified official Proton Pass $VERSION RPM built by Proton AG, mirrored by an unofficial community repository. This project is not affiliated with or endorsed by Proton AG.
+
+          **Package:** $FILENAME
+          **Downloaded from:** $DOWNLOAD_URL
+
+          **SHA512** (from Proton's manifest https://proton.me/download/PassDesktop/linux/x64/version.json, verified before upload):
+
+          ~~~
+          $EXPECTED_SHA512
+          ~~~
+
+          ### Source code
+          Proton Pass is free software released under the [GNU General Public License v3.0](https://www.gnu.org/licenses/gpl-3.0.html).
+          $SOURCE_TEXT
+
+          ### License
+          - Proton Pass: [GPL-3.0](https://www.gnu.org/licenses/gpl-3.0.html). See [COPYING-PROTON-PASS.md](https://github.com/$GITHUB_REPOSITORY/blob/main/COPYING-PROTON-PASS.md).
+          - This repository's scripts and workflow: MIT. See [LICENSE](https://github.com/$GITHUB_REPOSITORY/blob/main/LICENSE).
+
+          "Proton" and "Proton Pass" are trademarks of Proton AG.
+          EOF
+
           if [ "$RELEASE_INCOMPLETE" = "true" ]; then
             echo "Checksum OK. Uploading $FILENAME to existing release v$VERSION..."
             gh release upload "v$VERSION" "$FILENAME" --repo "$GITHUB_REPOSITORY" --clobber
+            gh release edit "v$VERSION" --repo "$GITHUB_REPOSITORY" --notes-file "$NOTES_FILE"
           else
             echo "Checksum OK. Creating GitHub Release v$VERSION..."
             gh release create "v$VERSION" \
               --repo "$GITHUB_REPOSITORY" \
-              --title "Proton Pass $VERSION" \
-              --notes "Automated release. Source: $DOWNLOAD_URL" \
+              --title "Proton Pass $VERSION (unofficial mirror)" \
+              --notes-file "$NOTES_FILE" \
               "$FILENAME"
           fi
 
