@@ -52,7 +52,7 @@ A GitHub Actions workflow runs every night at midnight UTC. It checks Proton's o
 
 1. Downloads the RPM from Proton's servers
 2. Verifies the SHA512 checksum against Proton's published manifest
-3. Creates a GitHub Release and attaches the RPM as a release asset
+3. Creates a GitHub Release and attaches the unmodified RPM, with release notes listing the SHA512 from Proton's manifest, the matching upstream source and the GPL-3.0 license
 4. Prunes releases beyond the configured retention limit
 5. Downloads all retained release assets, regenerates repository metadata with `createrepo_c`, and deploys everything to GitHub Pages
 
@@ -90,3 +90,13 @@ sudo rm /etc/yum.repos.d/proton-pass-unofficial.repo
 
 If you prefer to verify manually, Proton's manifest (including checksums) is available at:
 `https://proton.me/download/PassDesktop/linux/x64/version.json`
+
+## Licensing and source
+
+- **Proton Pass packages:** the RPMs are Proton AG's unmodified official builds, redistributed under the [GNU General Public License v3.0](https://www.gnu.org/licenses/gpl-3.0.html). See [COPYING-PROTON-PASS.md](COPYING-PROTON-PASS.md).
+- **Source code:** Proton Pass desktop is developed in [ProtonMail/WebClients — `applications/pass-desktop`](https://github.com/ProtonMail/WebClients/tree/main/applications/pass-desktop). Proton tags releases there as `proton-pass@<version>`. Each [release](https://github.com/matter172/unofficial-proton-pass-rpm/releases) here links to the matching source: the tag and commit when Proton has published that tag, otherwise the `pass-desktop` directory plus the Proton Pass version number.
+- **This repository:** the scripts, workflow and documentation are licensed under the MIT License. See [LICENSE](LICENSE).
+
+### Trademarks
+
+"Proton" and "Proton Pass" are trademarks of Proton AG. This project is not affiliated with or endorsed by Proton AG.
